@@ -2,6 +2,15 @@
 
 Use this program and a .mailmap file to apply fixes to your AUTHORS list.
 
+Use a `.mailmap` file to merge entries in a commit log, for example:
+
+```
+Kevin Burke <kev@inburke.com> Kevin Burke <burke@shyp.com>
+```
+
+If I have commits under both of those email addresses, they'll get merged into
+one, for the purposes of this program's output.
+
 For more, see
 https://stacktoheap.com/blog/2013/01/06/using-mailmap-to-fix-authors-list-in-git/.
 
