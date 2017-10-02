@@ -4,12 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
 )
+
+const Version = "0.1"
 
 func init() {
 	flag.Usage = func() {
@@ -18,13 +21,19 @@ func init() {
 Runs 'git log' on your codebase, rewriting commit authors using a .mailmap file
 if it exists, and deduplicates any authors that are present. The sorted list 
 of authors is printed to stdout.
+
 `)
-		os.Exit(2)
+		flag.PrintDefaults()
 	}
 }
 
 func main() {
+	var version = flag.Bool("version", false, "Print the version string and exit")
 	flag.Parse()
+	if flag.Arg(0) == "version" || *version {
+		fmt.Fprintf(os.Stderr, "write_mailmap version %s\n", Version)
+		os.Exit(2)
+	}
 	cmd := exec.Command("git", "log", "--use-mailmap", "--format='%aN <%aE>'")
 	bits, err := cmd.Output()
 	if err != nil {

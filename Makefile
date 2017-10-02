@@ -1,5 +1,7 @@
-STATICCHECK := $(shell command -v staticcheck)
-RELEASE := $(shell command -v github-release)
+BUMP_VERSION := $(GOPATH)/bin/bump_version
+DIFFER := $(GOPATH)/bin/differ
+STATICCHECK := $(GOPATH)/bin/staticcheck
+RELEASE := $(GOPATH)/bin/github-release
 
 vet:
 ifndef STATICCHECK
@@ -11,6 +13,12 @@ endif
 test: vet
 	go test ./...
 
+$(BUMP_VERSION):
+	go get github.com/Shyp/bump_version
+
+$(DIFFER):
+	go get github.com/kevinburke/differ
+
 release:
 ifndef version
 	@echo "Please provide a version"
@@ -20,7 +28,8 @@ ifndef GITHUB_TOKEN
 	@echo "Please set GITHUB_TOKEN in the environment"
 	exit 1
 endif
-	git tag $(version)
+	# $(DIFFER) $(MAKE) authors
+	$(BUMP_VERSION) minor main.go
 	git push origin --tags
 	mkdir -p releases/$(version)
 	GOOS=linux GOARCH=amd64 go build -o releases/$(version)/write_mailmap-linux-amd64 .
