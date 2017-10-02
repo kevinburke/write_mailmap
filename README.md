@@ -16,22 +16,31 @@ https://stacktoheap.com/blog/2013/01/06/using-mailmap-to-fix-authors-list-in-git
 
 ## Install
 
-go get github.com/kevinburke/write_mailmap
+If you have a Go development environment, you can get the binary by running the
+following:
+
+```bash
+go get -u github.com/kevinburke/write_mailmap
+```
 
 ## Usage
 
+```
 write_mailmap > AUTHORS.txt
+```
 
 You can put it in a Makefile like this:
 
 ```
-WRITE_MAILMAP := $(shell command -v write_mailmap)
+WRITE_MAILMAP := $(GOPATH)/bin/write_mailmap
 
-authors:
-ifndef WRITE_MAILMAP
-	go get github.com/kevinburke/write_mailmap
-endif
+$(WRITE_MAILMAP):
+	go get -u github.com/kevinburke/write_mailmap
+
+AUTHORS.txt: $(WRITE_MAILMAP)
 	write_mailmap > AUTHORS.txt
+
+authors: AUTHORS.txt
 ```
 
 Then run `make authors` and you'll get an AUTHORS.txt and your contributors
