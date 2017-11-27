@@ -47,12 +47,12 @@ WRITE_MAILMAP := $(GOPATH)/bin/write_mailmap
 
 $(WRITE_MAILMAP):
 	curl --silent --location --output=$(WRITE_MAILMAP) https://github.com/kevinburke/write_mailmap/releases/download/0.2/write_mailmap-linux-amd64
-	chmod 755 /usr/local/bin/differ
+	chmod 755 $(WRITE_MAILMAP)
 
 force: ;
 
 AUTHORS.txt: force | $(WRITE_MAILMAP)
-	write_mailmap > AUTHORS.txt
+	$(WRITE_MAILMAP) > AUTHORS.txt
 
 authors: AUTHORS.txt
 ```
