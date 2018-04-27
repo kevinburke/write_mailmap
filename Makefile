@@ -23,7 +23,7 @@ test: vet
 	go test ./...
 
 $(BUMP_VERSION):
-	go get github.com/Shyp/bump_version
+	go get github.com/kevinburke/bump_version
 
 $(DIFFER):
 	go get github.com/kevinburke/differ
