@@ -1,23 +1,11 @@
 BUMP_VERSION := $(GOPATH)/bin/bump_version
 DIFFER := $(GOPATH)/bin/differ
-MEGACHECK := $(GOPATH)/bin/megacheck
 RELEASE := $(GOPATH)/bin/github-release
 WRITE_MAILMAP := $(GOPATH)/bin/write_mailmap
 
-UNAME := $(shell uname)
-
-$(MEGACHECK):
-ifeq ($(UNAME), Darwin)
-	curl --silent --location --output $(MEGACHECK) https://github.com/kevinburke/go-tools/releases/download/2017-10-04/megacheck-darwin-amd64
-endif
-ifeq ($(UNAME), Linux)
-	curl --silent --location --output $(MEGACHECK) https://github.com/kevinburke/go-tools/releases/download/2017-10-04/megacheck-linux-amd64
-endif
-	chmod 755 $(MEGACHECK)
-
-vet: $(MEGACHECK)
+vet:
 	go vet ./...
-	$(MEGACHECK) ./...
+	staticcheck ./...
 
 test: vet
 	go test ./...
