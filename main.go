@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-const Version = "0.4"
+const Version = "0.5"
 
 func init() {
 	flag.Usage = func() {
