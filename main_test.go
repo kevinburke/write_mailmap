@@ -1,14 +1,22 @@
 package main
 
 import (
+	"os"
+	"os/exec"
+	"reflect"
 	"testing"
 )
+
+func identityAuthorMapper(authors []string) ([]string, error) {
+	return authors, nil
+}
 
 func TestParseCoAuthors(t *testing.T) {
 	tests := []struct {
 		name        string
 		body        string
 		seenAuthors map[string]bool
+		mapAuthors  authorMapper
 		want        []string
 	}{
 		{
@@ -83,10 +91,39 @@ func TestParseCoAuthors(t *testing.T) {
 			seenAuthors: make(map[string]bool),
 			want:        []string{"New Person <new@x.com>"},
 		},
+		{
+			name:        "mailmaps co-author before dedup",
+			body:        "msg\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n",
+			seenAuthors: make(map[string]bool),
+			mapAuthors: func(authors []string) ([]string, error) {
+				if len(authors) != 1 || authors[0] != "Claude Opus 4.8 (1M context) <noreply@anthropic.com>" {
+					t.Fatalf("mapper got %v, want Claude Opus co-author", authors)
+				}
+				return []string{"Claude <noreply@anthropic.com>"}, nil
+			},
+			want: []string{"Claude <noreply@anthropic.com>"},
+		},
+		{
+			name: "dedups mailmapped co-author",
+			body: "msg\n\nCo-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n",
+			seenAuthors: map[string]bool{
+				"claude <noreply@anthropic.com>": true,
+			},
+			mapAuthors: func(authors []string) ([]string, error) {
+				return []string{"Claude <noreply@anthropic.com>"}, nil
+			},
+			want: nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := parseCoAuthors([]byte(tt.body), tt.seenAuthors)
+			if tt.mapAuthors == nil {
+				tt.mapAuthors = identityAuthorMapper
+			}
+			got, err := parseCoAuthors([]byte(tt.body), tt.seenAuthors, tt.mapAuthors)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if len(got) != len(tt.want) {
 				t.Fatalf("parseCoAuthors() returned %d authors, want %d\ngot:  %v\nwant: %v", len(got), len(tt.want), got, tt.want)
 			}
@@ -101,9 +138,39 @@ func TestParseCoAuthors(t *testing.T) {
 	// Verify seenAuthors side effect separately.
 	t.Run("seenAuthors side effect", func(t *testing.T) {
 		seen := make(map[string]bool)
-		parseCoAuthors([]byte("Co-Authored-By: New Person <new@x.com>\n"), seen)
+		if _, err := parseCoAuthors([]byte("Co-Authored-By: New Person <new@x.com>\n"), seen, identityAuthorMapper); err != nil {
+			t.Fatal(err)
+		}
 		if !seen["new person <new@x.com>"] {
 			t.Error("expected seenAuthors to contain the new author after parsing")
 		}
 	})
+}
+
+func TestParseCoAuthorsInvalidTrailer(t *testing.T) {
+	_, err := parseCoAuthors([]byte("Co-Authored-By: not an address\n"), make(map[string]bool), identityAuthorMapper)
+	if err == nil {
+		t.Fatal("expected invalid Co-Authored-By trailer to return an error")
+	}
+}
+
+func TestMailmapAuthors(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if out, err := exec.Command("git", "init").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	err := os.WriteFile(".mailmap", []byte("Claude <noreply@anthropic.com> Claude Opus 4.8 (1M context) <noreply@anthropic.com>\n"), 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := mailmapAuthors([]string{"Claude Opus 4.8 (1M context) <noreply@anthropic.com>"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Claude <noreply@anthropic.com>"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("mailmapAuthors() = %v, want %v", got, want)
+	}
 }

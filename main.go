@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/mail"
 	"os"
 	"os/exec"
 	"sort"
@@ -27,11 +28,42 @@ of authors is printed to stdout.
 	}
 }
 
-// parseCoAuthors scans commit message bodies for "Co-Authored-By:" trailers
-// and returns any new authors not already present in seenAuthors. Found authors
-// are added to seenAuthors as a side effect.
-func parseCoAuthors(body []byte, seenAuthors map[string]bool) []string {
-	var authors []string
+type authorMapper func([]string) ([]string, error)
+
+func mailmapAuthors(authors []string) ([]string, error) {
+	if len(authors) == 0 {
+		return nil, nil
+	}
+	cmd := exec.Command("git", "check-mailmap", "--stdin")
+	cmd.Stdin = strings.NewReader(strings.Join(authors, "\n") + "\n")
+	bits, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+			return nil, fmt.Errorf("git check-mailmap --stdin: %w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return nil, fmt.Errorf("git check-mailmap --stdin: %w", err)
+	}
+
+	mappedAuthors := make([]string, 0, len(authors))
+	scanner := bufio.NewScanner(bytes.NewReader(bits))
+	for scanner.Scan() {
+		mappedAuthors = append(mappedAuthors, strings.TrimSpace(scanner.Text()))
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if len(mappedAuthors) != len(authors) {
+		return nil, fmt.Errorf("git check-mailmap --stdin returned %d authors for %d input authors", len(mappedAuthors), len(authors))
+	}
+	return mappedAuthors, nil
+}
+
+// parseCoAuthors scans commit message bodies for "Co-Authored-By:" trailers,
+// applies mailmap normalization, and returns any new authors not already
+// present in seenAuthors. Found authors are added to seenAuthors as a side
+// effect.
+func parseCoAuthors(body []byte, seenAuthors map[string]bool, mapAuthors authorMapper) ([]string, error) {
+	var rawAuthors []string
 	scanner := bufio.NewScanner(bytes.NewReader(body))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -46,6 +78,29 @@ func parseCoAuthors(body []byte, seenAuthors map[string]bool) []string {
 		if author == "" {
 			continue
 		}
+		if _, err := mail.ParseAddress(author); err != nil {
+			return nil, fmt.Errorf("invalid Co-Authored-By trailer %q: %w", author, err)
+		}
+		rawAuthors = append(rawAuthors, author)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	mappedAuthors, err := mapAuthors(rawAuthors)
+	if err != nil {
+		return nil, err
+	}
+	if len(mappedAuthors) != len(rawAuthors) {
+		return nil, fmt.Errorf("author mapper returned %d authors for %d input authors", len(mappedAuthors), len(rawAuthors))
+	}
+
+	var authors []string
+	for _, author := range mappedAuthors {
+		author = strings.TrimSpace(author)
+		if _, err := mail.ParseAddress(author); err != nil {
+			return nil, fmt.Errorf("invalid mailmapped Co-Authored-By trailer %q: %w", author, err)
+		}
 		lowerAuthor := strings.ToLower(author)
 		if seenAuthors[lowerAuthor] {
 			continue
@@ -53,10 +108,7 @@ func parseCoAuthors(body []byte, seenAuthors map[string]bool) []string {
 		authors = append(authors, author)
 		seenAuthors[lowerAuthor] = true
 	}
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
-	return authors
+	return authors, nil
 }
 
 func main() {
@@ -95,7 +147,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	coAuthors := parseCoAuthors(coAuthorBits, seenAuthors)
+	coAuthors, err := parseCoAuthors(coAuthorBits, seenAuthors, mailmapAuthors)
+	if err != nil {
+		log.Fatal(err)
+	}
 	authors = append(authors, coAuthors...)
 
 	sort.Strings(authors)
